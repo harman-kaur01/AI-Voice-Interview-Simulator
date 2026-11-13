@@ -17,7 +17,8 @@ import {
 
 import "./Analytics.css";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function Analytics({ token }) {
   const [interviews, setInterviews] = useState([]);
@@ -124,8 +125,6 @@ function Analytics({ token }) {
 
   return (
     <div className="analytics-page">
-
-      {/* PAGE HEADING */}
       <div className="analytics-heading">
         <div>
           <span className="analytics-label">YOUR PERFORMANCE</span>
@@ -139,15 +138,12 @@ function Analytics({ token }) {
         <div className="analytics-heading-icon">📊</div>
       </div>
 
-      {/* STATISTICS */}
       <div className="analytics-stats">
-
         <div className="analytics-stat-card">
           <div className="analytics-stat-top">
             <span>Total Interviews</span>
             <div className="analytics-icon blue-icon">📚</div>
           </div>
-
           <h3>{interviews.length}</h3>
           <p>All your practice sessions</p>
         </div>
@@ -157,7 +153,6 @@ function Analytics({ token }) {
             <span>Completed Interviews</span>
             <div className="analytics-icon green-icon">✓</div>
           </div>
-
           <h3>{completedInterviews.length}</h3>
           <p>Successfully completed</p>
         </div>
@@ -167,7 +162,6 @@ function Analytics({ token }) {
             <span>Average Score</span>
             <div className="analytics-icon purple-icon">⭐</div>
           </div>
-
           <h3>{averageScore}<small>/10</small></h3>
           <p>Across scored interviews</p>
         </div>
@@ -177,14 +171,11 @@ function Analytics({ token }) {
             <span>Scored Interviews</span>
             <div className="analytics-icon orange-icon">🎯</div>
           </div>
-
           <h3>{scoredInterviews.length}</h3>
           <p>Reports available</p>
         </div>
-
       </div>
 
-      {/* EMPTY STATE */}
       {scoredInterviews.length === 0 ? (
         <div className="analytics-empty">
           <div className="empty-chart-icon">📈</div>
@@ -196,10 +187,7 @@ function Analytics({ token }) {
         </div>
       ) : (
         <>
-
-          {/* SCORE CHARTS */}
           <div className="analytics-chart-grid">
-
             <div className="analytics-chart-card">
               <div className="chart-heading">
                 <div>
@@ -219,23 +207,19 @@ function Analytics({ token }) {
                     vertical={false}
                     stroke="#edf0f7"
                   />
-
                   <XAxis
                     dataKey="name"
                     tick={{ fill: "#64748b", fontSize: 12 }}
                     axisLine={false}
                     tickLine={false}
                   />
-
                   <YAxis
                     domain={[0, 10]}
                     tick={{ fill: "#64748b", fontSize: 12 }}
                     axisLine={false}
                     tickLine={false}
                   />
-
                   <Tooltip />
-
                   <Bar
                     dataKey="score"
                     name="Score"
@@ -266,23 +250,19 @@ function Analytics({ token }) {
                     vertical={false}
                     stroke="#edf0f7"
                   />
-
                   <XAxis
                     dataKey="name"
                     tick={{ fill: "#64748b", fontSize: 12 }}
                     axisLine={false}
                     tickLine={false}
                   />
-
                   <YAxis
                     domain={[0, 10]}
                     tick={{ fill: "#64748b", fontSize: 12 }}
                     axisLine={false}
                     tickLine={false}
                   />
-
                   <Tooltip />
-
                   <Line
                     type="monotone"
                     dataKey="score"
@@ -295,10 +275,8 @@ function Analytics({ token }) {
                 </LineChart>
               </ResponsiveContainer>
             </div>
-
           </div>
 
-          {/* STRENGTHS PIE CHART */}
           <div className="analytics-chart-card pie-chart-card">
             <div className="chart-heading">
               <div>
@@ -329,7 +307,6 @@ function Analytics({ token }) {
                       />
                     ))}
                   </Pie>
-
                   <Tooltip />
                   <Legend />
                 </PieChart>
@@ -339,9 +316,7 @@ function Analytics({ token }) {
             )}
           </div>
 
-          {/* STRENGTHS AND IMPROVEMENTS */}
           <div className="analytics-lists">
-
             <div className="analytics-list-card">
               <div className="list-heading">
                 <div className="list-icon strength-icon">✓</div>
@@ -381,12 +356,9 @@ function Analytics({ token }) {
                 <p>No improvement areas recorded yet.</p>
               )}
             </div>
-
           </div>
-
         </>
       )}
-
     </div>
   );
 }

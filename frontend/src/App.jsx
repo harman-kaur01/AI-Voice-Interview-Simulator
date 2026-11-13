@@ -2,7 +2,8 @@ import { useState, useRef } from "react";
 import "./App.css";
 import Analytics from "./Analytics";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function App() {
   // AUTHENTICATION
@@ -390,8 +391,11 @@ function App() {
     setMessage("Connecting to AI interviewer...");
     setWsStatus("Connecting");
 
+    // Automatically use ws:// locally and wss:// on Render
+    const WS_URL = API_URL.replace(/^http/, "ws");
+
     const ws = new WebSocket(
-      `ws://127.0.0.1:8000/ws/interview/${interviewId}`
+      `${WS_URL}/ws/interview/${interviewId}`
     );
 
     ws.onopen = () => {
