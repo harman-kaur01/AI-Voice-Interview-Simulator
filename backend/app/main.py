@@ -12,11 +12,11 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-   allow_origins=[
-    "http://localhost:5173",
-    "https://ai-voice-interview-simulator-4rxfgc77b-harman-kaur01.vercel.app",
-    "https://ai-voice-interview-simulator-isrnu03n7-harman-kaur01.vercel.app"
-],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://ai-voice-interview-simulator-isrnu03n7-harman-kaur01.vercel.app",
+    ],
+    allow_origin_regex=r"https://ai-voice-interview-simulator-[a-z0-9-]+-harman-kaur01\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
