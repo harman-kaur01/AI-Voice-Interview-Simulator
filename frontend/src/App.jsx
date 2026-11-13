@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import "./App.css";
 import Analytics from "./Analytics";
 
@@ -7,7 +7,17 @@ const API_URL =
 
 function App() {
   // AUTHENTICATION
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(
+    () => localStorage.getItem("interview_token") || ""
+  );
+
+  const [authMode, setAuthMode] = useState("login");
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
+  const [userName, setUserName] = useState("");
 
   // INTERVIEW CONFIGURATION
   const [interviewId, setInterviewId] = useState("");
@@ -36,7 +46,6 @@ function App() {
   const [loading, setLoading] = useState(false);
 
   const [message, setMessage] = useState("");
-  const [started, setStarted] = useState(false);
   const [completed, setCompleted] = useState(false);
 
   // WEBSOCKET
@@ -50,6 +59,182 @@ function App() {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   });
+
+  // LOGIN
+  const handleLogin = async (event) => {
+    event.preventDefault();
+
+    try {
+      setAuthLoading(true);
+      setAuthMessage("");
+
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+         email: authEmail.trim().toLowerCase(),
+password: authPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Login failed.");
+      }
+
+      if (!data.access_token) {
+        throw new Error("Login response did not contain an access token.");
+      }
+
+      localStorage.setItem("interview_token", data.access_token);
+      setToken(data.access_token);
+      setAuthPassword("");
+      setAuthMessage("");
+      setPage("dashboard");
+    } catch (error) {
+      setAuthMessage(error.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // REGISTER
+  const handleRegister = async (event) => {
+    event.preventDefault();
+
+    try {
+      setAuthLoading(true);
+      setAuthMessage("");
+
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: authName,
+          email: authEmail,
+          password: authPassword,
+          role: "job-seeker",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Registration failed.");
+      }
+
+      setAuthMode("login");
+      setAuthPassword("");
+      setAuthMessage("Account created successfully! Please log in.");
+    } catch (error) {
+      setAuthMessage(error.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // LOGOUT
+  const handleLogout = () => {
+    if (socket) {
+      socket.close();
+    }
+
+    window.speechSynthesis?.cancel();
+    recognitionRef.current?.stop();
+
+    localStorage.removeItem("interview_token");
+
+    setToken("");
+    setHistory([]);
+    setReport(null);
+    setInterviewId("");
+    setResumeId("");
+    setResumeName("");
+    setQuestion("");
+    setAnswer("");
+    setEvaluation(null);
+    setCompleted(false);
+    setSocket(null);
+    setWsStatus("Disconnected");
+    setMessage("");
+    setPage("dashboard");
+
+    setAuthMode("login");
+    setAuthMessage("");
+    setAuthPassword("");
+  };
+
+  // VERIFY LOGIN AND LOAD USER PROFILE
+  useEffect(() => {
+    if (!token) return;
+
+    const verifySession = async () => {
+      try {
+        const response = await fetch(`${API_URL}/auth/profile`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.status === 401) {
+          localStorage.removeItem("interview_token");
+          setToken("");
+          setAuthMessage("Your session has expired. Please log in again.");
+          return;
+        }
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.detail || "Unable to verify your account.");
+        }
+
+        setUserName(data.user?.name || data.user?.email || "Job Seeker");
+      } catch (error) {
+        console.error("Authentication verification failed:", error);
+      }
+    };
+
+    verifySession();
+  }, [token]);
+
+  // FETCH INTERVIEW HISTORY
+  const fetchHistory = async () => {
+    try {
+      setLoading(true);
+
+      const response = await fetch(`${API_URL}/interviews/history`, {
+        headers: getHeaders(),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Unable to fetch history.");
+      }
+
+      setHistory(data.interviews || []);
+      setMessage("Interview history updated successfully!");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // LOAD HISTORY AFTER LOGIN
+  useEffect(() => {
+    if (token) {
+      fetchHistory();
+    }
+    // fetchHistory uses the current token from this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   // NAVIGATION HELPERS
   const openHistory = () => {
@@ -69,7 +254,7 @@ function App() {
 
   // SPEAK QUESTION
   const speakQuestion = (text) => {
-    if (!text) return;
+    if (!text || !window.speechSynthesis) return;
 
     window.speechSynthesis.cancel();
 
@@ -78,38 +263,6 @@ function App() {
     speech.rate = 0.9;
 
     window.speechSynthesis.speak(speech);
-  };
-
-  // FETCH INTERVIEW HISTORY
-  const fetchHistory = async () => {
-    try {
-      if (!token.trim()) {
-        setMessage("Please enter your JWT token.");
-        return;
-      }
-
-      setLoading(true);
-
-      const response = await fetch(
-        `${API_URL}/interviews/history`,
-        {
-          headers: getHeaders(),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || "Unable to fetch history");
-      }
-
-      setHistory(data.interviews || []);
-      setMessage("Interview history updated successfully!");
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setLoading(false);
-    }
   };
 
   // VIEW INTERVIEW REPORT
@@ -128,7 +281,7 @@ function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || "Unable to fetch report");
+        throw new Error(data.detail || "Unable to fetch report.");
       }
 
       setReport(data.report);
@@ -147,10 +300,6 @@ function App() {
     if (!file) return;
 
     try {
-      if (!token.trim()) {
-        throw new Error("Please enter your JWT token first.");
-      }
-
       const extension = file.name.split(".").pop().toLowerCase();
 
       if (!["pdf", "docx"].includes(extension)) {
@@ -164,27 +313,23 @@ function App() {
       setLoading(true);
       setResumeId("");
       setResumeName("");
-
       setMessage("Uploading resume...");
 
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(
-        `${API_URL}/resumes/upload`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        }
-      );
+      const response = await fetch(`${API_URL}/resumes/upload`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || "Resume upload failed");
+        throw new Error(data.detail || "Resume upload failed.");
       }
 
       setResumeId(data.resume_id);
@@ -204,7 +349,7 @@ function App() {
 
       if (!questionResponse.ok) {
         throw new Error(
-          questionData.detail || "Question generation failed"
+          questionData.detail || "Question generation failed."
         );
       }
 
@@ -222,10 +367,6 @@ function App() {
   // CREATE NEW INTERVIEW
   const createNewInterview = async () => {
     try {
-      if (!token.trim()) {
-        throw new Error("Please enter your JWT token.");
-      }
-
       if (duration < 5 || duration > 120) {
         throw new Error("Duration must be between 5 and 120 minutes.");
       }
@@ -233,26 +374,23 @@ function App() {
       setLoading(true);
       setMessage("Creating your interview...");
 
-      const response = await fetch(
-        `${API_URL}/interviews/create`,
-        {
-          method: "POST",
-          headers: getHeaders(),
-          body: JSON.stringify({
-            job_role: jobRole,
-            experience_level: experienceLevel,
-            interview_type: interviewType,
-            duration_minutes: Number(duration),
-            difficulty: difficulty,
-            resume_id: resumeId || null,
-          }),
-        }
-      );
+      const response = await fetch(`${API_URL}/interviews/create`, {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({
+          job_role: jobRole,
+          experience_level: experienceLevel,
+          interview_type: interviewType,
+          duration_minutes: Number(duration),
+          difficulty,
+          resume_id: resumeId || null,
+        }),
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || "Interview creation failed");
+        throw new Error(data.detail || "Interview creation failed.");
       }
 
       const newInterviewId = data.interview_id;
@@ -272,13 +410,11 @@ function App() {
 
       if (!questionResponse.ok) {
         throw new Error(
-          questionData.detail || "Question generation failed"
+          questionData.detail || "Question generation failed."
         );
       }
 
-      setMessage(
-        "Interview created and questions generated successfully!"
-      );
+      setMessage("Interview created and questions generated successfully!");
 
       await fetchHistory();
     } catch (error) {
@@ -291,8 +427,8 @@ function App() {
   // START INTERVIEW
   const startInterview = async () => {
     try {
-      if (!token.trim() || !interviewId.trim()) {
-        throw new Error("Please enter your token and interview ID.");
+      if (!interviewId.trim()) {
+        throw new Error("Please create an interview first.");
       }
 
       setLoading(true);
@@ -309,11 +445,10 @@ function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || "Unable to start interview");
+        throw new Error(data.detail || "Unable to start interview.");
       }
 
       setQuestion(data.question);
-      setStarted(true);
       setCompleted(false);
       setEvaluation(null);
       setAnswer("");
@@ -374,8 +509,8 @@ function App() {
 
   // CONNECT WEBSOCKET
   const connectWebSocket = () => {
-    if (!token.trim() || !interviewId.trim()) {
-      setMessage("Please enter your token and interview ID.");
+    if (!interviewId.trim()) {
+      setMessage("Please create an interview first.");
       return;
     }
 
@@ -391,7 +526,6 @@ function App() {
     setMessage("Connecting to AI interviewer...");
     setWsStatus("Connecting");
 
-    // Automatically use ws:// locally and wss:// on Render
     const WS_URL = API_URL.replace(/^http/, "ws");
 
     const ws = new WebSocket(
@@ -413,8 +547,7 @@ function App() {
       }
 
       if (
-        data.message ===
-        "Connected to AI interview successfully!"
+        data.message === "Connected to AI interview successfully!"
       ) {
         setSocket(ws);
         setWsStatus("Connected");
@@ -443,9 +576,7 @@ function App() {
           if (data.question_type === "follow_up") {
             setMessage("AI generated a follow-up question!");
           } else {
-            setMessage(
-              "Answer evaluated! Here is your next question."
-            );
+            setMessage("Answer evaluated! Here is your next question.");
           }
         }
       }
@@ -501,7 +632,126 @@ function App() {
         ).toFixed(1)
       : "0.0";
 
-  // SIDEBAR
+  // LOGIN / REGISTER SCREEN
+  if (!token) {
+    return (
+      <div className="auth-page">
+        <div className="auth-box">
+          <div className="auth-brand">
+            <div className="brand-icon">AI</div>
+            <h1>
+              Interview<span>AI</span>
+            </h1>
+            <p>YOUR PERSONAL AI INTERVIEW COACH</p>
+          </div>
+
+          <h2>
+            {authMode === "login"
+              ? "Welcome Back!"
+              : "Create Your Account"}
+          </h2>
+
+          <p className="auth-description">
+            {authMode === "login"
+              ? "Log in to continue your interview preparation."
+              : "Register to start practicing with AI."}
+          </p>
+
+          {authMessage && (
+            <div className="auth-message">{authMessage}</div>
+          )}
+
+          <form
+            onSubmit={
+              authMode === "login"
+                ? handleLogin
+                : handleRegister
+            }
+          >
+            {authMode === "register" && (
+              <div className="auth-field">
+                <label>Full Name</label>
+                <input
+                  type="text"
+                  placeholder="Enter your name"
+                  value={authName}
+                  onChange={(e) => setAuthName(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+
+            <div className="auth-field">
+              <label>Email Address</label>
+              <input
+                type="email"
+                placeholder="Enter your email"
+                value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="auth-field">
+              <label>Password</label>
+              <input
+                type="password"
+                placeholder="Enter your password"
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                minLength={6}
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="auth-submit"
+              disabled={authLoading}
+            >
+              {authLoading
+                ? "Please wait..."
+                : authMode === "login"
+                ? "Login →"
+                : "Create Account →"}
+            </button>
+          </form>
+
+          <div className="auth-switch">
+            {authMode === "login" ? (
+              <>
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("register");
+                    setAuthMessage("");
+                  }}
+                >
+                  Register
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("login");
+                    setAuthMessage("");
+                  }}
+                >
+                  Login
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // SIDEBAR NAVIGATION
   const navigationItems = [
     { id: "dashboard", icon: "▦", label: "Dashboard" },
     { id: "new", icon: "＋", label: "Create Interview" },
@@ -511,14 +761,15 @@ function App() {
 
   return (
     <div className="app-shell">
-
       {/* SIDEBAR */}
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-icon">AI</div>
 
           <div>
-            <h2>Interview<span>AI</span></h2>
+            <h2>
+              Interview<span>AI</span>
+            </h2>
             <p>VOICE SIMULATOR</p>
           </div>
         </div>
@@ -563,9 +814,11 @@ function App() {
           </div>
 
           <div className="sidebar-footer">
-            <div className="user-avatar">U</div>
+            <div className="user-avatar">
+              {(userName || "U").charAt(0).toUpperCase()}
+            </div>
             <div>
-              <strong>Job Seeker</strong>
+              <strong>{userName || "Job Seeker"}</strong>
               <span>Personal workspace</span>
             </div>
           </div>
@@ -574,13 +827,13 @@ function App() {
 
       {/* MAIN CONTENT */}
       <div className="main-area">
-
         {/* TOPBAR */}
         <header className="topbar">
           <div>
             <h3>
               {page === "dashboard" && "Dashboard"}
               {page === "new" && "Create Interview"}
+              {page === "history" && "My Interviews"}
               {page === "analytics" && "Performance Analytics"}
               {page === "interview" && "Live Interview"}
               {page === "report" && "Interview Report"}
@@ -601,26 +854,15 @@ function App() {
             >
               ↻ Refresh
             </button>
+
+            <button
+              className="refresh-button"
+              onClick={handleLogout}
+            >
+              Logout ↗
+            </button>
           </div>
         </header>
-
-        {/* TOKEN AUTHENTICATION */}
-        <section className="auth-card">
-          <div className="auth-heading">
-            <div className="auth-icon">🔐</div>
-            <div>
-              <strong>Authentication</strong>
-              <span>Enter your JWT access token to connect your account.</span>
-            </div>
-          </div>
-
-          <input
-            type="password"
-            placeholder="Paste your JWT access token"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-          />
-        </section>
 
         {/* GLOBAL MESSAGE */}
         {message && (
@@ -639,11 +881,14 @@ function App() {
         {/* DASHBOARD */}
         {page === "dashboard" && (
           <main className="dashboard">
-
             <section className="hero-section">
               <div className="hero-content">
-                <span className="hero-tag">✦ YOUR AI CAREER ASSISTANT</span>
-                <h1>Welcome back! 👋</h1>
+                <span className="hero-tag">
+                  ✦ YOUR AI CAREER ASSISTANT
+                </span>
+
+                <h1>Welcome back, {userName || "there"}! 👋</h1>
+
                 <p>
                   Build confidence, improve your skills, and prepare
                   for your next interview with AI.
@@ -691,7 +936,10 @@ function App() {
                   <span>Average Score</span>
                   <div className="stat-icon">★</div>
                 </div>
-                <h1>{averageScore}<small>/10</small></h1>
+                <h1>
+                  {averageScore}
+                  <small>/10</small>
+                </h1>
                 <p>Your overall performance</p>
               </div>
             </section>
@@ -818,6 +1066,48 @@ function App() {
           </main>
         )}
 
+        {/* MY INTERVIEWS */}
+        {page === "history" && (
+          <main className="page-content">
+            <div className="page-intro">
+              <span className="page-tag">YOUR ACTIVITY</span>
+              <h1>My Interviews</h1>
+              <p>Review your previous interview sessions.</p>
+            </div>
+
+            <div className="history-section">
+              {history.length === 0 ? (
+                <div className="empty-state">
+                  <h3>No interviews yet</h3>
+                  <button onClick={() => openPage("new")}>
+                    Create Interview
+                  </button>
+                </div>
+              ) : (
+                <div className="history-grid">
+                  {history.map((item) => (
+                    <div className="history-card" key={item._id}>
+                      <h3>{item.job_role}</h3>
+                      <p>{item.experience_level}</p>
+                      <p>{item.interview_type}</p>
+                      <p>Status: {item.status}</p>
+
+                      {item.status === "completed" && (
+                        <button
+                          className="report-button"
+                          onClick={() => viewReport(item._id)}
+                        >
+                          View Report →
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </main>
+        )}
+
         {/* CREATE INTERVIEW */}
         {page === "new" && (
           <main className="page-content">
@@ -917,7 +1207,9 @@ function App() {
                   disabled={loading}
                 />
 
-                <small>Supported formats: PDF, DOCX · Maximum 5 MB</small>
+                <small>
+                  Supported formats: PDF, DOCX · Maximum 5 MB
+                </small>
 
                 {resumeName && (
                   <div className="resume-success">
@@ -930,7 +1222,7 @@ function App() {
               <button
                 className="primary-button"
                 onClick={createNewInterview}
-                disabled={loading || !token.trim()}
+                disabled={loading}
               >
                 {loading ? "Please wait..." : "Create AI Interview →"}
               </button>
@@ -1057,7 +1349,8 @@ function App() {
                 <div className="evaluation">
                   <h2>AI Evaluation</h2>
                   <div className="evaluation-score">
-                    {evaluation.score}<small>/10</small>
+                    {evaluation.score}
+                    <small>/10</small>
                   </div>
 
                   <p>{evaluation.feedback}</p>
@@ -1123,7 +1416,9 @@ function App() {
             <div className="page-intro">
               <span className="page-tag">PERFORMANCE REVIEW</span>
               <h1>Interview Performance Report</h1>
-              <p>Review your AI evaluation and suggested improvements.</p>
+              <p>
+                Review your AI evaluation and suggested improvements.
+              </p>
             </div>
 
             <div className="interview-card report-section">
@@ -1166,10 +1461,15 @@ function App() {
                 <h3>Question-wise Performance</h3>
 
                 {report.question_reports?.map((item, index) => (
-                  <div className="history-card report-question" key={index}>
+                  <div
+                    className="history-card report-question"
+                    key={index}
+                  >
                     <h4>Question {index + 1}</h4>
 
-                    <p><strong>{item.question}</strong></p>
+                    <p>
+                      <strong>{item.question}</strong>
+                    </p>
 
                     <p>
                       <strong>Your Answer:</strong> {item.answer}
@@ -1203,7 +1503,9 @@ function App() {
 
         {/* FOOTER */}
         <footer className="app-footer">
-          <p>InterviewAI © 2026 · Powered by Artificial Intelligence</p>
+          <p>
+            InterviewAI © 2026 · Powered by Artificial Intelligence
+          </p>
         </footer>
       </div>
     </div>

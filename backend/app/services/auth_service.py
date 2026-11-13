@@ -36,23 +36,19 @@ def register_user(user_data):
 # LOGIN USER
 def login_user(user_data):
 
-    # Find user by email
     user = user_collection.find_one({
         "email": user_data.email
     })
 
-    # Check if user exists
     if not user:
         return None
 
-    # Verify password
     if not verify_password(
         user_data.password,
         user["password"]
     ):
         return None
 
-    # Generate JWT token
     token = create_access_token({
         "sub": str(user["_id"]),
         "email": user["email"],
